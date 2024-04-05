@@ -1,0 +1,104 @@
+/*
+  IR emitter/receiver
+Using https://www.instructables.com/Arduino-Based-Optical-Tachometer/ as a guide to set up IR emitter/receiver set up
+Using the following for IR emitter/receiver help:
+  https://www.youtube.com/watch?v=_mOF1JXo1DU&ab_channel=CalebRowe
+  https://www.instructables.com/How-to-Make-an-IR-Object-Sensor-With-Arduino/
+          Motor + ESC
+Using https://www.youtube.com/watch?v=OOplk52R4no&ab_channel=Painless360 as a guide to calibrate ESC
+Using http://www.rcindia.org/electric-power/esc-three-colored-wires-want-help/?imode as a guide to conect ESC wires
+Using https://www.youtube.com/watch?v=qOzE5F5vFGs&ab_channel=TheEngineeringMindset to set up my motor w/ ESC to arduino
+          Data acquisition
+Using https://www.youtube.com/watch?v=dcRQH1zPNbA&ab_channel=YaserAliHusen as a guide to gather data and output on excel
+*/
+
+/*
+Requirements:
+Calibratete ESC - done
+Set up IR emitter/receiver set up - done
+Use Round Robin w/ Interrupt design - done
+Set up motor/esc set up - done
+Record RPM vs time - done
+Transmit RPM vs time to host - done
+*/
+
+#include <Servo.h>
+
+//Setting up the IR setup
+int ledPin = 13;
+int statusPin = 12;
+
+volatile byte rpmcount;
+volatile int status;
+
+unsigned int rpm;
+unsigned long timeold;
+unsigned long time;
+
+//Setting up the Propeller set up
+Servo ESC; 
+volatile int Speed = 0; 
+
+void setup() 
+{   
+  Serial.begin(9600);   
+  //Interrupt 0 is digital pin 2, so that is where    
+  //the IR detector is connected   
+  //Triggers on FALLING (change from HIGH to LOW)   
+  attachInterrupt(0, rpm_fun, FALLING);      
+  //Turn on IR LED   
+  pinMode(ledPin, OUTPUT);    
+  digitalWrite(ledPin, HIGH);      
+  //Use statusPin to flash along with interrupts   
+  pinMode(statusPin, OUTPUT);   
+  rpmcount = 0;   
+  rpm = 0;   
+  timeold = 0;   
+  status = LOW; 
+  ESC.attach(9,1000,2000); //pin 9, range 1000 - 2000 ms
+}
+
+void rpm_fun() 
+ {   
+  //Each rotation, this interrupt function is run twice, so take that into consideration for calculating RPM   
+  //Update count      
+  rpmcount++;         
+  //Toggle status LED      
+  if (status == LOW) 
+  {     
+    status = HIGH;   
+  } 
+  else 
+  {     
+    status = LOW;   
+  }   
+  digitalWrite(statusPin, status);
+}
+
+void loop() 
+{   
+  Speed = analogRead(A0);
+  Speed = map(Speed, 0, 1023, 0, 180);
+  ESC.write(Speed);
+  
+  //Update RPM every second    
+  static unsigned long refreshTime = 0;
+  static const unsigned long refreshInterval = 1;
+  time = millis()/1000;
+  if (time - refreshTime >= refreshInterval)
+  {
+    //Don't process interrupts during calculations   
+    detachInterrupt(0);   
+    rpm = 30*1000/(millis() - timeold)*rpmcount;   
+    timeold = millis();   
+    rpmcount = 0;      
+
+    //Write it out to serial port  
+    Serial.print(rpm,DEC);     //DEC is decimal (base 10) 
+    Serial.print(",");
+    Serial.println(time);
+    ///Restart the interrupt processing   
+    attachInterrupt(0, rpm_fun, FALLING);  
+    refreshTime += refreshInterval;
+  }
+}
