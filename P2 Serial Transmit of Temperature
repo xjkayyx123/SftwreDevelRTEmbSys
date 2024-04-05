@@ -1,0 +1,90 @@
+/*
+Using code generated from DHT11 example from arduino as a guide (Author: Dhruba Saha)
+Using https://www.circuitbasics.com/how-to-set-up-the-dht11-humidity-sensor-on-an-arduino/ as a guide to set up the DHT11
+Using https://www.circuitbasics.com/how-to-set-up-an-lcd-display-on-an-arduino/ as a guide to set up the LCD
+Using https://www.instructables.com/Arduino-Timer-Interrupts/ & https://electronoobs.com/eng_arduino_tut140.php as a guide to set up interrupt
+Using https://www.youtube.com/watch?v=dcRQH1zPNbA&ab_channel=YaserAliHusen as a guide to gather data and output on excel
+*/
+
+/*
+Requirements:
+Calibrate temp sensor - done
+Use Round Robin w/ Interrupt design - done
+Convert temperature to Fahrenheit - done  
+Record at a periodic time of 10 s - done
+Transmit time and temperature to host - done
+Export as comma separate value file and plot temp vs time - done
+*/
+
+#include <DHT11.h> //Include the DHT11 library for interfacing with the sensor.
+#include <LiquidCrystal.h> //LCD initialize
+
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);  //Sets LCD
+DHT11 dht11(7);                         //Sets Sensor
+
+//Temp & time creation
+volatile int tempF; //to let compiler variable may change & prevent optimization of compiler
+unsigned long time;
+
+void setup() {
+    // Initialize serial communication to allow debugging and data readout.
+    // Using a baud rate of 9600 bps.
+    Serial.begin(9600);
+    lcd.begin(16, 2);
+    cli();                            //stop interrupts
+    //Sets timer1 interrupt at 15.625 kHz
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCCR1B |= B00000101;              //sets prescalar to 1024
+    TCCR1B |= (1 << WGM12);           //Enable CTC. Clear Timer on compare.
+    TIMSK1 |= B00000010;              //sets OCIE1A to 1 so we enable compare match A
+    OCR1A = 31250;                    //Set compare register A to this value
+    sei();                            //Enable back the interrupts
+}
+
+void loop() {
+    int temperature = 0;
+    int humidity = 0;
+    // Attempt to read the temperature and humidity values from the DHT11 sensor.
+    int result = dht11.readTemperatureHumidity(temperature, humidity);
+    tempF = (9*temperature/5)+32;       // converts Celsius to Farenheit
+    // Check the results of the readings.
+    if (result == 0)                    //If the reading is successful, print the temperature and humidity values.
+    {
+      //to display readings
+      //1st Row
+      lcd.setCursor(0,0);
+      lcd.print("Temp: ");
+      lcd.print(tempF);
+      lcd.print((char)223);              //degree symbol
+      lcd.print("F");
+      //2nd Row
+      lcd.setCursor(0,1);
+      lcd.print("Humidity: ");
+      lcd.print(humidity);
+      lcd.print("%");
+      delay(1000);
+    } 
+    else                                  //If there are errors, print the appropriate error messages.
+    {
+      lcd.setCursor(0,0);
+      lcd.print(DHT11::getErrorString(result)); // Print error message based on the error code
+    }
+}
+
+//With the settings above, this IRS will trigger each 1s.
+ISR(TIMER1_COMPA_vect)
+{
+  time = micros()/1000000;
+  if(time%10 == 0)
+  {
+    //commented out code was used for reading on serial monitor for verification
+    //Serial.print("Temp: ");
+    Serial.print(tempF);
+    //Serial.println();
+    Serial.print(",");
+    //Serial.print("Time: " );
+    Serial.print(time);
+    Serial.println();
+  }
+}
